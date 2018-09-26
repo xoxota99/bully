@@ -8,3 +8,4 @@
 
 *.ai
 EAGLE/*
+.vscode/settings.json
