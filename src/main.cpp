@@ -209,15 +209,20 @@ void loop_RUNNING()
                 //turn left until something interesting happens.
                 motorRight.move(255);
                 motorLeft.move(-255);
+                break;
             case RIGHT:
                 //turn right until something interesting happens.
                 motorRight.move(-255);
                 motorLeft.move(255);
+                break;
             case FRONT:
                 //full speed ahead until something interesting happens.
                 motorRight.move(255);
                 motorLeft.move(255);
+                break;
             default:
+                Serial.printf("lastKnownTarget is unrecognized: %d", lastKnownTarget);
+                break;
             }
         }
         else
