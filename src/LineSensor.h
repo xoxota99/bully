@@ -18,6 +18,7 @@ enum op_mode_t
 class LineSensor
 {
   private:
+    const int MAX_VALUE = 1023, MIN_VALUE = 0;
     int _pin;
     int _smoothing = 4;
     sense_callback_t _callback;

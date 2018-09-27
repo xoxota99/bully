@@ -40,12 +40,18 @@ void LineSensor::loop()
         }
         newVal = newVal / _smoothing;
 
-        if ((_op_mode == DISCRETE) &&
-            ((_value <= _low_threshold && newVal > _high_threshold) ||
-             (_value > _high_threshold && newVal <= _low_threshold)))
+        if (_op_mode == DISCRETE)
         {
-            _value = newVal;
-            _callback(_value, _pin);
+            if (newVal > _high_threshold && _value != MAX_VALUE)
+            {
+                _value = MAX_VALUE;
+                _callback(_value, _pin);
+            }
+            else if (newVal <= _low_threshold && _value != MIN_VALUE)
+            {
+                _value = MIN_VALUE;
+                _callback(_value, _pin);
+            }
         }
         else if (_op_mode == CONTINUOUS && newVal != _value)
         {
