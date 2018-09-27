@@ -47,7 +47,7 @@ void Button::loop()
             }
             else
             {
-                // nothing has happened.
+                // Button was already pressed, and it's still pressed.
             }
         }
         else
@@ -63,7 +63,7 @@ void Button::loop()
             }
             else
             {
-                // nothing has happened.
+                // Button was not pressed, and is still not pressed. Super exciting.
             }
         }
     }

@@ -6,8 +6,8 @@
 
 #ifndef IR_SENSOR_H
 #define IR_SENSOR_H
-#include "types.h"
 #include <Arduino.h>
+#include "types.h"
 
 typedef void (*target_acquire_callback_t)(int);
 typedef void (*target_lost_callback_t)(int);

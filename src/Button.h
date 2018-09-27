@@ -5,8 +5,8 @@
 
 #ifndef BUTTON_H
 #define BUTTON_H
-#include "types.h"
 #include <Arduino.h>
+#include "types.h"
 
 typedef void (*button_down_t)(int);
 typedef void (*button_up_t)(int);
