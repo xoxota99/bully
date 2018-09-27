@@ -157,7 +157,6 @@ void buttonDown_callback(int pin)
             break;
         default:
             Serial.printf("Button pushed at unknown run state (%d)\n", runState);
-            break;
         }
     }
 }
@@ -222,7 +221,6 @@ void loop_RUNNING()
                 break;
             default:
                 Serial.printf("lastKnownTarget is unrecognized: %d", lastKnownTarget);
-                break;
             }
         }
         else
@@ -234,6 +232,7 @@ void loop_RUNNING()
             case LEFTHAND:
                 motorRight.move(255);
                 motorLeft.move(-255);
+                break;
             case RIGHTHAND:
             default:
                 motorRight.move(-255);
@@ -305,7 +304,6 @@ void targetAcquired_callback(int pin)
     default:
         Serial.printf("Target acquired on UNKNOWN PIN %d\n", pin);
         lastKnownTarget = NONE;
-        break;
     }
 }
 
@@ -325,7 +323,6 @@ void targetLost_callback(int pin)
         break;
     default:
         Serial.printf("Target lost on UNKNOWN PIN %d\n", pin);
-        break;
     }
 }
 
