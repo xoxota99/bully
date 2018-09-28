@@ -1,23 +1,24 @@
 #include "Motor.h"
 
-Motor Motor::attach(int pwm_pin, int pin_a, int pin_b)
+Motor::Motor(int pwm_pin, int pin_a, int pin_b)
 {
     Motor m;
     m._pwm_pin = pwm_pin;
     m._pin_a = pin_a;
     m._pin_b = pin_b;
 
-    m.move(0);
+    pinMode(pwm_pin, OUTPUT);
+    pinMode(pin_a, OUTPUT);
+    pinMode(pin_b, OUTPUT);
 
-    return m;
+    m.move(0);
 }
 
-void Motor::detach()
+Motor::~Motor()
 {
     digitalWriteFast(_pwm_pin, LOW);
     digitalWriteFast(_pin_a, LOW);
     digitalWriteFast(_pin_b, LOW);
-    _attached = false;
 }
 
 /*
@@ -26,18 +27,6 @@ void Motor::detach()
 void Motor::move(int speed)
 {
     _motor_speed = min(255, max(-255, speed));
-    // if (_motor_speed < 0)
-    // {
-    //     _motor_state = BACKWARD;
-    // }
-    // else if (_motor_speed > 0)
-    // {
-    //     _motor_state = FORWARD;
-    // }
-    // else if (_motor_speed == 0)
-    // {
-    //     _motor_state = FREE;
-    // }
 }
 
 int Motor::getSpeed()
@@ -52,6 +41,6 @@ void Motor::loop()
         digitalWriteFast(_pin_a, (_motor_speed > 0 ? HIGH : LOW));
         digitalWriteFast(_pin_b, (_motor_speed < 0 ? HIGH : LOW));
 
-        analogWrite(_pwm_pin, _motor_speed); // -255 to 255
+        analogWrite(_pwm_pin, abs(_motor_speed)); // 0 to 255
     }
 }

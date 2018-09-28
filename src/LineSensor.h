@@ -31,13 +31,11 @@ class LineSensor
     LineSensor(){};
 
   public:
-    static LineSensor attach(int pin, sense_callback_t callback);
-    static LineSensor attach(int pin, int smoothing, op_mode_t op_mode,
-                             sense_callback_t callback);
-    static LineSensor attach(int pin, int low_threshold, int high_threshold,
-                             int smoothing, op_mode_t op_mode,
-                             sense_callback_t callback);
-    void detach();
+    LineSensor(int pin, sense_callback_t callback)
+        : LineSensor(pin, 4, DISCRETE, callback) {}
+    LineSensor(int pin, int smoothing, op_mode_t op_mode, sense_callback_t callback)
+        : LineSensor(pin, 450, 575, smoothing, op_mode, callback) {}
+    LineSensor(int pin, int low_threshold, int high_threshold, int smoothing, op_mode_t op_mode, sense_callback_t callback);
     void loop();
     int getValue();
     op_mode_t getOpMode();

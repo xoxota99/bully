@@ -26,12 +26,12 @@ class Button
     Button(){};
 
   public:
-    static Button attach(io_mode_t ioMode, int pinMode, int pin,
-                         button_down_t buttonDownCallBack,
-                         button_up_t buttonUpCallBack);
-    static Button attach(int pin, button_down_t buttonDownCallBack,
-                         button_up_t buttonUpCallBack);
-    void detach();
+    Button(io_mode_t ioMode, int pinMode, int pin,
+           button_down_t buttonDownCallBack,
+           button_up_t buttonUpCallBack);
+    Button(int pin, button_down_t buttonDownCallBack,
+           button_up_t buttonUpCallBack) : Button(ACTIVE_LOW, INPUT_PULLUP, pin, buttonDownCallBack, buttonUpCallBack) {}
+    ~Button(){};
     void loop();
     bool isPressed();
     io_mode_t getIOMode();

@@ -20,18 +20,15 @@ class IRSensor
     target_lost_callback_t _target_lost_callback = 0;
     io_mode_t _io_mode = ACTIVE_HIGH;
     bool _target_acquired = false;
-    bool _attached = true;
 
     IRSensor(){};
 
   public:
-    static IRSensor attach(int pin, io_mode_t ioMode,
-                           target_acquire_callback_t target_acquired_callback,
-                           target_lost_callback_t target_lost_callback);
-    static IRSensor attach(int pin,
-                           target_acquire_callback_t target_acquired_callback,
-                           target_lost_callback_t target_lost_callback);
-    void detach();
+    IRSensor(int pin, io_mode_t ioMode,
+             target_acquire_callback_t target_acquired_callback,
+             target_lost_callback_t target_lost_callback);
+    IRSensor(int pin, target_acquire_callback_t target_acquired_callback,
+             target_lost_callback_t target_lost_callback) : IRSensor(pin, ACTIVE_HIGH, target_acquired_callback, target_lost_callback) {}
     void loop();
     bool isTargetAcquired();
 };

@@ -16,8 +16,8 @@ class Motor
     bool _attached = true;
 
   public:
-    static Motor attach(int pwm_pin, int pin_a, int pin_b);
-    void detach();
+    Motor(int pwm_pin, int pin_a, int pin_b);
+    ~Motor();
     void move(int speed);
     int getSpeed();
 
