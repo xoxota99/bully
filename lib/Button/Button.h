@@ -3,10 +3,11 @@
  * Supports ACTIVE_LOW or ACTIVE_HIGH modes, and event callbacks.
  * */
 
-#ifndef BUTTON_H
-#define BUTTON_H
+#ifndef __BUTTON_H__
+#define __BUTTON_H__
+
 #include <Arduino.h>
-#include "types.h"
+#include <iotypes.h>
 
 typedef void (*button_down_t)(int);
 typedef void (*button_up_t)(int);
@@ -37,4 +38,4 @@ class Button
     io_mode_t getIOMode();
 };
 
-#endif // BUTTON_H
+#endif // __BUTTON_H__

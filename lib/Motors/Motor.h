@@ -2,8 +2,8 @@
  * Support for Pololu VNH5019 Motor Driver carrier board.
  * */
 
-#ifndef MOTOR_H
-#define MOTOR_H
+#ifndef __MOTOR_H__
+#define __MOTOR_H__
 #include <Arduino.h>
 
 class Motor
@@ -18,10 +18,10 @@ class Motor
   public:
     Motor(int pwm_pin, int pin_a, int pin_b);
     ~Motor();
-    void move(int speed);
+    void move(int speed); //between -255 and 255
     int getSpeed();
 
     void loop();
 };
 
-#endif // MOTOR_H
+#endif // __MOTOR_H

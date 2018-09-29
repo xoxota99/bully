@@ -3,8 +3,26 @@
  * Supports callbacks on rising / falling edge.
  * */
 
-#ifndef LINE_SENSOR_H
-#define LINE_SENSOR_H
+#ifndef __LINE_SENSOR_H__
+#define __LINE_SENSOR_H__
+/*
+   bully
+   Copyright (C) 2018  Philippe Desrosiers
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <Arduino.h>
 
 typedef void (*sense_callback_t)(int, int);
@@ -22,11 +40,11 @@ class LineSensor
     int _pin;
     int _smoothing = 4;
     sense_callback_t _callback;
-    int _value;
+    int _analog_value;
+    bool _digital_value = LOW;
     int _low_threshold = 450;
     int _high_threshold = 575;
     op_mode_t _op_mode = DISCRETE;
-    bool _attached = true;
 
     LineSensor(){};
 
@@ -37,7 +55,8 @@ class LineSensor
         : LineSensor(pin, 450, 575, smoothing, op_mode, callback) {}
     LineSensor(int pin, int low_threshold, int high_threshold, int smoothing, op_mode_t op_mode, sense_callback_t callback);
     void loop();
-    int getValue();
+    int getAnalogValue();
+    bool getDigitalValue();
     op_mode_t getOpMode();
 };
-#endif // LINE_SENSOR_H
+#endif // __LINE_SENSOR_H
