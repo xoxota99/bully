@@ -1,26 +1,33 @@
+/*
+   bully
+   Copyright (C) 2018  Philippe Desrosiers
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <Arduino.h>
-#include "Button.h"
-#include "IRSensor.h"
-#include "LineSensor.h"
-#include "Motor.h"
+#include <Logger.h>
+#include <Button.h>
+#include <IRSensor.h>
+#include <LineSensor.h>
+#include <Motor.h>
+#include <MotorController.h>
 
-#define LED_PIN LED_BUILTIN
-#define COUNTDOWN_TIMEOUT_MILLIS 5000 //countdown timeout, in micros.
-#define DEBOUNCE_TIMEOUT_MILLIS 50    //timeout to debounce button pushes, in millis.
-#define TARGET_PERSISTENCE_TIMEOUT_MICROS 2000000
+#include "commands.h"
+#include "config.h"
 
-// uncomment to enable motors
-#define MOTOR_ENABLE
-
-// pin defintions
-// Button pins
-const int BTN_PIN = 12;                                              // Button pin
-const int MOTOR_L_B_PIN = 2, MOTOR_L_PWM_PIN = 3, MOTOR_L_A_PIN = 4; // Left motor pins
-const int MOTOR_R_B_PIN = 5, MOTOR_R_PWM_PIN = 6, MOTOR_R_A_PIN = 7; // Right motor pins
-const int LEFT_IR_PIN = 18, RIGHT_IR_PIN = 15, FRONT_IR_PIN = 22;    // IR sensor pins.
-const int LEFT_FRONT_LINE_PIN = 19, RIGHT_FRONT_LINE_PIN = 16;       // Line Sensing pins.
-
-enum runState_t
+enum run_state_t
 {
     STARTUP,
     WAITING,
@@ -29,7 +36,7 @@ enum runState_t
     STOPPED
 };
 
-const char *stateNames[] = {
+const char *state_names[] = {
     "STARTUP",
     "WAITING",
     "COUNTDOWN",
@@ -50,267 +57,259 @@ enum handedness_t
     RIGHTHAND
 };
 
-void exitState(runState_t oldState);
-void setRunState(runState_t newState);
+void ExitRunState(run_state_t old_state);
+void EnterRunState(run_state_t new_state);
+void SetRunState(run_state_t new_state);
 
-void buttonDown_callback(int pin);
-void buttonUp_callback(int pin);
-void targetAcquired_callback(int pin);
-void targetLost_callback(int pin);
-void lineSensor_callback(int pin, int value);
+void OnButtonDown(int pin);
+void OnButtonUp(int pin);
+void OnTargetAcquired(int pin);
+void OnTargetLost(int pin);
+void OnLineSense(int pin, int value);
+void OnMoveComplete(movement_t move_type, unsigned long duration_millis);
 
-void loop_STARTUP();
-void loop_WAITING();
-void loop_COUNTDOWN();
-void loop_RUNNING();
-void loop_STOPPED();
+void LoopStateWait();
+void LoopStateCountdown();
+void LoopStateRunning();
+void LoopStateStopped();
 
 typedef void (*run_state_loop_handler_t)();
 
-run_state_loop_handler_t loop_handlers[] = {loop_STARTUP,
-                                            loop_WAITING,
-                                            loop_COUNTDOWN,
-                                            loop_RUNNING,
-                                            loop_STOPPED};
+run_state_loop_handler_t loop_handlers[] = {0,
+                                            LoopStateWait,
+                                            LoopStateCountdown,
+                                            LoopStateRunning,
+                                            LoopStateStopped};
 
-runState_t runState = STARTUP;
+run_state_t run_state = STARTUP;
 
-Button button(BTN_PIN, buttonDown_callback, buttonUp_callback);
+Button button(BTN_PIN, OnButtonDown, OnButtonUp);
 
-Motor motorLeft(MOTOR_L_PWM_PIN, MOTOR_L_A_PIN, MOTOR_L_B_PIN);
-Motor motorRight(MOTOR_R_PWM_PIN, MOTOR_R_A_PIN, MOTOR_R_B_PIN);
+Motor motor_left(MOTOR_L_PWM_PIN, MOTOR_L_A_PIN, MOTOR_L_B_PIN);
+Motor motor_right(MOTOR_R_PWM_PIN, MOTOR_R_A_PIN, MOTOR_R_B_PIN);
+MotorController motor_controller(&motor_left, &motor_right, OnMoveComplete);
 
-IRSensor frontSensor(FRONT_IR_PIN, targetAcquired_callback, targetLost_callback);
-IRSensor leftSensor(LEFT_IR_PIN, ACTIVE_LOW, targetAcquired_callback, targetLost_callback);
-IRSensor rightSensor(RIGHT_IR_PIN, ACTIVE_LOW, targetAcquired_callback, targetLost_callback);
+IRSensor sensor_front(FRONT_IR_PIN, OnTargetAcquired, OnTargetLost);
+IRSensor sensor_left(LEFT_IR_PIN, ACTIVE_LOW, OnTargetAcquired, OnTargetLost);
+IRSensor sensor_right(RIGHT_IR_PIN, ACTIVE_LOW, OnTargetAcquired, OnTargetLost);
 
-LineSensor leftLineSensor(LEFT_FRONT_LINE_PIN, 4, DISCRETE, lineSensor_callback);
-LineSensor rightLineSensor(RIGHT_FRONT_LINE_PIN, 4, DISCRETE, lineSensor_callback);
+LineSensor line_sensor_left(LEFT_FRONT_LINE_PIN, 4, DISCRETE, OnLineSense);
+LineSensor line_sensor_right(RIGHT_FRONT_LINE_PIN, 4, DISCRETE, OnLineSense);
 
-bool leftFrontLineStatus = false, rightFrontLineStatus = false;
+bool line_status[] = {false, false};
 
-target_location_t lastKnownTarget = NONE;
-unsigned long lastTargetLockTime = 0;
+target_location_t last_known_target = NONE;
+unsigned long last_target_lock_time = 0;
 
-unsigned long countDownStartTime = 0;
+unsigned long countdown_start_time = 0;
 
 handedness_t handedness;
 
-unsigned long lastButtonUpDown = 0;
-bool ignoreNextButtonUp = false;
+unsigned long last_button_event_time = 0;
+
+//to account for the fact that we transition to COUNTDOWN on button up, but we
+//transition to WAITING on button DOWN. Without this, we would just go immediately
+//into countdown again on button_up.
+bool ignore_next_button_up = false;
 
 /*
  * Run whenever we transition from one state to another.
  */
-void exitState(runState_t oldState)
+void ExitRunState(run_state_t old_state)
 {
-    switch (oldState)
+    switch (old_state)
     {
-    case STARTUP:
-        break;
-    case WAITING:
-        break;
-    case COUNTDOWN:
-        break;
     case RUNNING:
-        motorLeft.move(0);
-        motorRight.move(0);
+        motor_controller.stop();
         break;
+    case STARTUP:
+    case WAITING:
+    case COUNTDOWN:
     case STOPPED:
         break;
     default:
-        Serial.printf("Exiting unknown run state (%d)\n", runState);
+        Logger::warn("Exiting unknown run state (%d)\n", run_state);
     }
 }
 
-void enterState(runState_t newState)
+void EnterRunState(run_state_t new_state)
 {
-    runState = newState;
-    switch (runState)
+    run_state = new_state;
+    switch (run_state)
     {
-    case STARTUP:
-        break;
     case WAITING:
+        flushCommandInput();
         break;
     case COUNTDOWN:
-        countDownStartTime = millis();
+        countdown_start_time = millis();
         break;
     case RUNNING:
-        Serial.println("FIGHT!!!");
+        Logger::debug("FIGHT!!!");
         // TODO: Right about here, we want to create some "start fight" behavior.
         // We know we're starting up at 90 degrees to the enemy (roughly). Do we want to dodge?
         break;
+    case STARTUP:
     case STOPPED:
         break;
     default:
-        Serial.printf("Entering unknown run state (%d)\n", newState);
+        Logger::warn("Entering unknown run state (%d)\n", new_state);
     }
 }
 
-void setRunState(runState_t newState)
+void SetRunState(run_state_t new_state)
 {
-    // Serial.printf("setRunState: %d\n", newState);
-    exitState(runState);
-    enterState(newState);
+    ExitRunState(run_state);
+    EnterRunState(new_state);
 }
 
-void buttonDown_callback(int pin)
+void OnMoveComplete(movement_t move_type, unsigned long duration_millis)
+{
+    Logger::debug("Finished moving.");
+}
+
+void OnButtonDown(int pin)
 {
 
-    if (millis() - lastButtonUpDown > DEBOUNCE_TIMEOUT_MILLIS)
+    if (millis() - last_button_event_time > DEBOUNCE_TIMEOUT_MILLIS)
     { // debounce
-        Serial.println("button_down");
-        lastButtonUpDown = millis();
-        switch (runState)
+        Logger::debug("button_down");
+        last_button_event_time = millis();
+        switch (run_state)
         {
         case COUNTDOWN:
         case RUNNING:
-            setRunState(WAITING);
-            ignoreNextButtonUp = true;
+            SetRunState(WAITING);
+            ignore_next_button_up = true;
         default:
             break;
         }
     }
 }
 
-void buttonUp_callback(int pin)
+void OnButtonUp(int pin)
 {
-    if (millis() - lastButtonUpDown > DEBOUNCE_TIMEOUT_MILLIS)
+    if (millis() - last_button_event_time > DEBOUNCE_TIMEOUT_MILLIS)
     { // debounce
-        Serial.println("button_up");
-        lastButtonUpDown = millis();
-        if (!ignoreNextButtonUp)
+        Logger::debug("button_up");
+        last_button_event_time = millis();
+        if (!ignore_next_button_up)
         {
-            switch (runState)
+            switch (run_state)
             {
             case WAITING:
-                setRunState(COUNTDOWN);
+                SetRunState(COUNTDOWN);
             default:
                 break;
             }
         }
-        ignoreNextButtonUp = false;
+        ignore_next_button_up = false;
     }
-}
-
-void loop_STARTUP()
-{
-    // do nothing.
 }
 
 /*
     Move in some way (Forward, backward,or turning left/right) until a line sensor or IR sensor hits.
 */
-void loop_RUNNING()
+void LoopStateRunning()
 {
+    // Within the RUNNING state, we sort of have three implied sub-states:
+    //  - PATROL (looking for enemy)
+    //  - ATTACK (found enemy)
+    //  - RETREAT (back away from the edge of the ring).
 
-    motorRight.move(255);
-    motorLeft.move(255);
-    return;
-}
-
-void loop_RUNNNING_OLD()
-{
     // Check sensors
-    if (leftFrontLineStatus)
+    if (line_status[0]) //left line sensor hit.
     {
-        if (rightFrontLineStatus)
+        if (line_status[1]) //right line sensor hit.
         {
             //back up straight.
-            motorRight.move(-255);
-            motorLeft.move(-255);
+            motor_controller.back(255, 1000);
         }
         else
         {
             //back up curving slightly right.
-            motorRight.move(-128);
-            motorLeft.move(-255);
+            motor_controller.move(-255, -128, 500);
         }
     }
-    else if (rightFrontLineStatus)
+    else if (line_status[1]) //right line sensor hit.
     {
         //back up curving slightly left.
-        motorRight.move(-255);
-        motorLeft.move(-128);
+        motor_controller.move(-128, -255, 500);
     }
     else
     {
         //no line detected.
-        if (lastKnownTarget != NONE && lastTargetLockTime <= TARGET_PERSISTENCE_TIMEOUT_MICROS)
+        if (last_known_target != NONE && millis() - last_target_lock_time <= TARGET_PERSISTENCE_TIMEOUT_MILLIS)
         {
-            switch (lastKnownTarget)
+            switch (last_known_target)
             {
             case LEFT:
                 //turn left until something interesting happens.
-                motorRight.move(255);
-                motorLeft.move(-255);
+                motor_controller.left(255);
                 break;
             case RIGHT:
                 //turn right until something interesting happens.
-                motorRight.move(-255);
-                motorLeft.move(255);
+                motor_controller.right(255);
                 break;
             case FRONT:
                 //full speed ahead until something interesting happens.
-                motorRight.move(255);
-                motorLeft.move(255);
+                motor_controller.forward(255);
                 break;
             default:
-                Serial.printf("lastKnownTarget is unrecognized: %d", lastKnownTarget);
+                Logger::warn("last_known_target is unrecognized: %d", last_known_target);
             }
         }
         else
         {
             // we never had a target, or it's been a good long while since we've seen a target.
-            // spin in a direction.
+            // spin in a direction, looking for a target.
             switch (handedness)
             {
             case LEFTHAND:
-                motorRight.move(255);
-                motorLeft.move(-255);
+                motor_controller.left(128);
                 break;
             case RIGHTHAND:
             default:
-                motorRight.move(-255);
-                motorLeft.move(255);
+                motor_controller.right(128);
             }
         }
     }
 }
 
-void loop_STOPPED()
+void LoopStateStopped()
 {
     // someone hit the emergency brake. do some cleanup, then transition to WAITING.
     digitalWriteFast(LED_PIN, LOW);
 
     // do some cleanup, then transition to WAITING;
     // We do this here in the loop because the next best place to do it would be in the
-    // enterState() function, which would result in a recursive call to enterState(),
+    // EnterRunState() function, which would result in a recursive call to EnterRunState(),
     // which gives me the heebie-jeebies. The end result is that this loop shouldn't really ever
     // be run more than once before transitioning state.
-    setRunState(WAITING);
+    SetRunState(WAITING);
 }
 
-void loop_WAITING()
+void LoopStateWait()
 {
     //waiting for someone to press my button and start the countdown.
     //do nothing. Sensors are attached and looping, though.
+
+    processCommands(); //process any incoming serial commands.
 }
 
-void loop_COUNTDOWN()
+void LoopStateCountdown()
 {
-    unsigned long elapsed = millis() - countDownStartTime;
+    unsigned long elapsed = millis() - countdown_start_time;
 
     if (elapsed >= COUNTDOWN_TIMEOUT_MILLIS)
     {
-        countDownStartTime = 0;
-        setRunState(RUNNING);
+        countdown_start_time = 0;
+        SetRunState(RUNNING);
     }
 
     if (elapsed % 1000 == 0)
     {
         unsigned long t = 5 - ((int)(elapsed / 1000.0));
-        Serial.printf("Countdown: %d\n", t);
+        Logger::info("Countdown: %d\n", t);
         digitalWriteFast(LED_PIN, HIGH);
         delay(100);
     }
@@ -320,49 +319,49 @@ void loop_COUNTDOWN()
     }
 }
 
-void targetAcquired_callback(int pin)
+void OnTargetAcquired(int pin)
 {
-    lastTargetLockTime = micros();
+    last_target_lock_time = millis();
     switch (pin)
     {
     case LEFT_IR_PIN:
-        Serial.printf("Target acquired on LEFT PIN %d\n", pin);
-        lastKnownTarget = LEFT;
+        Logger::debug("Target acquired on LEFT PIN %d\n", pin);
+        last_known_target = LEFT;
         break;
     case RIGHT_IR_PIN:
-        Serial.printf("Target acquired on RIGHT PIN %d\n", pin);
-        lastKnownTarget = RIGHT;
+        Logger::debug("Target acquired on RIGHT PIN %d\n", pin);
+        last_known_target = RIGHT;
         break;
     case FRONT_IR_PIN:
-        Serial.printf("Target acquired on FRONT PIN %d\n", pin);
-        lastKnownTarget = FRONT;
+        Logger::debug("Target acquired on FRONT PIN %d\n", pin);
+        last_known_target = FRONT;
         break;
     default:
-        Serial.printf("Target acquired on UNKNOWN PIN %d\n", pin);
-        lastKnownTarget = NONE;
+        Logger::debug("Target acquired on UNKNOWN PIN %d\n", pin);
+        last_known_target = NONE;
     }
 }
 
-void targetLost_callback(int pin)
+void OnTargetLost(int pin)
 {
-    lastTargetLockTime = micros();
+    last_target_lock_time = millis();
     switch (pin)
     {
     case LEFT_IR_PIN:
-        Serial.printf("Target lost on LEFT PIN %d\n", pin);
+        Logger::debug("Target lost on LEFT PIN %d\n", pin);
         break;
     case RIGHT_IR_PIN:
-        Serial.printf("Target lost on RIGHT PIN %d\n", pin);
+        Logger::debug("Target lost on RIGHT PIN %d\n", pin);
         break;
     case FRONT_IR_PIN:
-        Serial.printf("Target lost on FRONT PIN %d\n", pin);
+        Logger::debug("Target lost on FRONT PIN %d\n", pin);
         break;
     default:
-        Serial.printf("Target lost on UNKNOWN PIN %d\n", pin);
+        Logger::debug("Target lost on UNKNOWN PIN %d\n", pin);
     }
 }
 
-void lineSensor_callback(int pin, int senseValue)
+void OnLineSense(int pin, int senseValue)
 {
     const char *dString;
     if (senseValue == 0)
@@ -379,27 +378,29 @@ void lineSensor_callback(int pin, int senseValue)
     switch (pin)
     {
     case LEFT_FRONT_LINE_PIN:
-        Serial.printf("%s on LEFT FRONT pin %d\n", dString, pin);
-        leftFrontLineStatus = senseValue == 0;
+        Logger::debug("%s on LEFT FRONT pin %d\n", dString, pin);
+        line_status[0] = senseValue == 0;
         break;
     case RIGHT_FRONT_LINE_PIN:
-        Serial.printf("%s on RIGHT FRONT pin %d\n", dString, pin);
-        rightFrontLineStatus = senseValue == 0;
+        Logger::debug("%s on RIGHT FRONT pin %d\n", dString, pin);
+        line_status[1] = senseValue == 0;
         break;
     default:
-        Serial.printf("%s on UNKNOWN PIN %d\n", dString, pin);
+        Logger::debug("%s on UNKNOWN PIN %d\n", dString, pin);
         break;
     }
 }
 
 void setup()
 {
+    Logger::level = LOG_LEVEL;
+
     pinMode(LED_PIN, OUTPUT);
     digitalWriteFast(LED_PIN, HIGH);
 
     handedness = random(0, 2) == 0 ? LEFTHAND : RIGHTHAND; //decides which way the robot will spin when "pinging".
 
-    setRunState(WAITING); //done with startup, waiting for the button press.
+    SetRunState(WAITING); //done with startup, waiting for the button press.
 }
 
 void loop()
@@ -408,19 +409,57 @@ void loop()
 
 #ifdef MOTOR_ENABLE
 
-    motorLeft.loop();
-    motorRight.loop();
+    motor_controller.loop();
 
 #endif //MOTOR_ENABLE
 
-    frontSensor.loop();
-    leftSensor.loop();
-    rightSensor.loop();
+    sensor_front.loop();
+    sensor_left.loop();
+    sensor_right.loop();
 
     // line sensors are sensitive to reflectance. So a reflective dark surface
     // looks a lot like a reflective light surface. We need some sort of calibration / normalization routine.
-    // leftLineSensor.loop();
-    // rightLineSensor.loop();
+    line_sensor_left.loop();
+    line_sensor_right.loop();
 
-    loop_handlers[runState]();
+    if (loop_handlers[run_state])
+        loop_handlers[run_state]();
+}
+
+//=====
+// process shell commands
+
+int cmd_sense(int argc, char **argv)
+{
+    if (argc == 1)
+    {
+        Logger::info("Usage: s");
+        return SHELL_RET_FAILURE;
+    }
+
+    Logger::info("Sensor Values========");
+    Logger::info("Left IR: %s\t(pin %d = %s)", (sensor_left.isTargetAcquired() ? "Acquired" : "None"), LEFT_IR_PIN, (digitalRead(LEFT_IR_PIN) ? "HIGH" : "LOW"));
+    Logger::info("Right IR: %s\t(pin %d = %s)", (sensor_right.isTargetAcquired() ? "Acquired" : "None"), RIGHT_IR_PIN, (digitalRead(RIGHT_IR_PIN) ? "HIGH" : "LOW"));
+    Logger::info("Front IR: %s\t(pin %d = %s)", (sensor_front.isTargetAcquired() ? "Acquired" : "None"), FRONT_IR_PIN, (digitalRead(FRONT_IR_PIN) ? "HIGH" : "LOW"));
+    Logger::info("\n");
+    Logger::info("Left LineSense: %s\t(pin %d = %s)", (line_sensor_left.getDigitalValue() ? "Line" : "No Line"), LEFT_FRONT_LINE_PIN, (digitalRead(LEFT_FRONT_LINE_PIN) ? "HIGH" : "LOW"));
+    Logger::info("Right LineSense: %s\t(pin %d = %s)", (line_sensor_right.getDigitalValue() ? "Line" : "No Line"), RIGHT_FRONT_LINE_PIN, (digitalRead(RIGHT_FRONT_LINE_PIN) ? "HIGH" : "LOW"));
+    Logger::info("\n");
+    Logger::info("Left Motor: %s %d", (motor_left.getSpeed() < 0 ? "BACKWARD" : (motor_left.getSpeed() == 0 ? "STOPPED" : "FORWARD")), abs(motor_left.getSpeed()));
+    Logger::info("Right Motor: %s %d", (motor_right.getSpeed() < 0 ? "BACKWARD" : (motor_right.getSpeed() == 0 ? "STOPPED" : "FORWARD")), abs(motor_right.getSpeed()));
+
+    return SHELL_RET_SUCCESS;
+}
+
+int cmd_calibrate(int argc, char **argv)
+{
+    if (argc == 1)
+    {
+        Logger::info("Usage: c [il|if|ir|ll|lr]");
+        return SHELL_RET_FAILURE;
+    }
+
+    //Do something.
+
+    return SHELL_RET_SUCCESS;
 }
