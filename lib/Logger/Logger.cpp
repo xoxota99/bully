@@ -20,97 +20,101 @@
 
 Logger::LogLevel Logger::level = TRACE;
 
-void Logger::_log_va_list(const LogLevel level, const char* fmt, va_list args)
-{
-    static const char* lvlStrings[6] = {
-        "TRACE",
-        "DEBUG",
-        "INFO",
-        "WARN",
-        "ERROR",
-        "FATAL"
-    };
+const char *lvlStrings[] = {
+    "TRACE",
+    "DEBUG",
+    "INFO",
+    "WARN",
+    "ERROR",
+    "FATAL"};
 
+const char *Logger::getLevelName()
+{
+    return lvlStrings[level];
+}
+
+void Logger::_log_va_list(const LogLevel level, const char *fmt, va_list args)
+{
     char buffer[256];
     // va_start (args, fmt);
-    vsprintf(buffer,fmt, args);
-    Serial.printf("[%s] - %s\n",lvlStrings[level],buffer);
+    vsprintf(buffer, fmt, args);
+    Serial.printf("[%s] - %s\n", lvlStrings[level], buffer);
     // va_end (args);
 }
 
-void Logger::log(const LogLevel level, const char* fmt, ...)
+void Logger::log(const LogLevel level, const char *fmt, ...)
 {
     if (level >= Logger::level)
     {
         va_list args;
-        va_start(args,fmt);
-        _log_va_list(level,fmt,args);
+        va_start(args, fmt);
+        _log_va_list(level, fmt, args);
         va_end(args);
     }
 }
 
-void Logger::trace(const char * fmt, ...)
+void Logger::trace(const char *fmt, ...)
 {
     if (TRACE >= Logger::level)
     {
         va_list args;
         va_start(args, fmt);
-        _log_va_list(TRACE,fmt, args);
+        _log_va_list(TRACE, fmt, args);
         va_end(args);
     }
 }
 
-void Logger::debug(const char * fmt, ...)
+void Logger::debug(const char *fmt, ...)
 {
     if (DEBUG >= Logger::level)
     {
         va_list args;
         va_start(args, fmt);
-        _log_va_list(DEBUG,fmt, args);
+        _log_va_list(DEBUG, fmt, args);
         va_end(args);
     }
 }
 
-void Logger::info(const char * fmt, ...)
+void Logger::info(const char *fmt, ...)
 {
     if (INFO >= Logger::level)
     {
         va_list args;
         va_start(args, fmt);
-        _log_va_list(INFO,fmt, args);
+        _log_va_list(INFO, fmt, args);
         va_end(args);
     }
 }
 
-void Logger::warn(const char * fmt, ...)
+void Logger::warn(const char *fmt, ...)
 {
     if (WARN >= Logger::level)
     {
         va_list args;
         va_start(args, fmt);
-        _log_va_list(WARN,fmt, args);
+        _log_va_list(WARN, fmt, args);
         va_end(args);
     }
 }
 
-void Logger::error(const char * fmt, ...)
+void Logger::error(const char *fmt, ...)
 {
     if (ERROR >= Logger::level)
     {
         va_list args;
         va_start(args, fmt);
-        _log_va_list(ERROR,fmt, args);
+        _log_va_list(ERROR, fmt, args);
         va_end(args);
     }
 }
 
-void Logger::fatal(const char * fmt, ...)
+void Logger::fatal(const char *fmt, ...)
 {
     if (FATAL >= Logger::level)
     {
         va_list args;
         va_start(args, fmt);
-        _log_va_list(FATAL,fmt, args);
+        _log_va_list(FATAL, fmt, args);
         va_end(args);
     }
 }

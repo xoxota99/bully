@@ -47,7 +47,7 @@ void LineSensor::loop()
 int LineSensor::getAnalogValue() { return _analog_value; }
 bool LineSensor::getDigitalValue()
 {
-    return _analog_value;
+    return _digital_value;
 }
 
 op_mode_t LineSensor::getOpMode() { return _op_mode; }

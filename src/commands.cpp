@@ -29,12 +29,6 @@ void flushCommandInput()
     }
 }
 
-void processCommands()
-{
-    // This should always be called to process user input
-    shell_task();
-}
-
 /**
    Function to read data from serial port
    Functions to read from physical media should use this prototype:
@@ -71,9 +65,14 @@ int cmd_reset(int argc, char **argv)
 
 int cmd_log(int argc, char **argv)
 {
+    if (argc == 1)
+    {
+        Serial.printf("%s\n", Logger::getLevelName());
+    }
+
     if (argc != 2)
     {
-        Logger::info("Usage: log [TRACE | DEBUG | INFO | WARN | ERROR | FATAL]");
+        Serial.printf("Usage: log [TRACE | DEBUG | INFO | WARN | ERROR | FATAL]\n");
         return SHELL_RET_FAILURE;
     }
 
@@ -105,7 +104,7 @@ int cmd_log(int argc, char **argv)
     }
     else
     {
-        Logger::info("Usage: log [TRACE | DEBUG | INFO | WARN | ERROR | FATAL]");
+        Serial.printf("Usage: log [TRACE | DEBUG | INFO | WARN | ERROR | FATAL]\n");
         return SHELL_RET_FAILURE;
     }
 
@@ -117,10 +116,14 @@ int cmd_log(int argc, char **argv)
  */
 int cmd_help(int argc, char **argv)
 {
+    shell_print_commands();
+    return SHELL_RET_SUCCESS;
+    /*
     int size = *(&commands + 1) - commands;
     for (int i = 0; i < size; i++)
     {
-        Logger::info("%s\t\t%s", commands[i].shell_command_string, commands[i].shell_help_string);
+        Serial.printf("%s\t\t%s\n", commands[i].shell_command_string, commands[i].shell_help_string);
     }
     return SHELL_RET_SUCCESS;
+    */
 }

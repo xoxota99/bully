@@ -117,6 +117,12 @@ bool ignore_next_button_up = false;
  */
 void ExitRunState(run_state_t old_state)
 {
+    int stateCount = sizeof(state_names) / sizeof(state_names[0]);
+    if (old_state < stateCount)
+    {
+        Logger::debug("Now leaving state: '%s'", state_names[old_state]);
+    }
+
     switch (old_state)
     {
     case RUNNING:
@@ -134,6 +140,12 @@ void ExitRunState(run_state_t old_state)
 
 void EnterRunState(run_state_t new_state)
 {
+    int stateCount = sizeof(state_names) / sizeof(state_names[0]);
+    if (new_state < stateCount)
+    {
+        Logger::debug("Now entering state: '%s'", state_names[new_state]);
+    }
+
     run_state = new_state;
     switch (run_state)
     {
@@ -293,18 +305,12 @@ void LoopStateWait()
     //waiting for someone to press my button and start the countdown.
     //do nothing. Sensors are attached and looping, though.
 
-    processCommands(); //process any incoming serial commands.
+    shell_task(); //process any incoming serial commands.
 }
 
 void LoopStateCountdown()
 {
     unsigned long elapsed = millis() - countdown_start_time;
-
-    if (elapsed >= COUNTDOWN_TIMEOUT_MILLIS)
-    {
-        countdown_start_time = 0;
-        SetRunState(RUNNING);
-    }
 
     if (elapsed % 1000 == 0)
     {
@@ -316,6 +322,12 @@ void LoopStateCountdown()
     else
     {
         digitalWriteFast(LED_PIN, LOW);
+    }
+
+    if (elapsed >= COUNTDOWN_TIMEOUT_MILLIS)
+    {
+        countdown_start_time = 0;
+        SetRunState(RUNNING);
     }
 }
 
@@ -391,14 +403,86 @@ void OnLineSense(int pin, int senseValue)
     }
 }
 
+//=====
+// process shell commands
+
+int cmd_sense(int argc, char **argv)
+{
+    if (argc != 1)
+    {
+        Serial.printf("Usage: s\n");
+        return SHELL_RET_FAILURE;
+    }
+
+    Serial.printf("Sensor Values========\n");
+    Serial.printf("Left IR: %s\t(pin %d = %s)\n", (sensor_left.isTargetAcquired() ? "Acquired" : "None"), LEFT_IR_PIN, (digitalRead(LEFT_IR_PIN) ? "HIGH" : "LOW"));
+    Serial.printf("Right IR: %s\t(pin %d = %s)\n", (sensor_right.isTargetAcquired() ? "Acquired" : "None"), RIGHT_IR_PIN, (digitalRead(RIGHT_IR_PIN) ? "HIGH" : "LOW"));
+    Serial.printf("Front IR: %s\t(pin %d = %s)\n", (sensor_front.isTargetAcquired() ? "Acquired" : "None"), FRONT_IR_PIN, (digitalRead(FRONT_IR_PIN) ? "HIGH" : "LOW"));
+    Serial.printf("\n");
+    Serial.printf("Left LineSense: %s\t(pin %d = %d)\n", (line_sensor_left.getDigitalValue() ? "No Line" : "Line"), LEFT_FRONT_LINE_PIN, analogRead(LEFT_FRONT_LINE_PIN));
+    Serial.printf("Right LineSense: %s\t(pin %d = %d)\n", (line_sensor_right.getDigitalValue() ? "No Line" : "Line"), RIGHT_FRONT_LINE_PIN, analogRead(RIGHT_FRONT_LINE_PIN));
+    Serial.printf("\n");
+    Serial.printf("Left Motor: %s %d\n", (motor_left.getSpeed() < 0 ? "BACKWARD" : (motor_left.getSpeed() == 0 ? "STOPPED" : "FORWARD")), abs(motor_left.getSpeed()));
+    Serial.printf("Right Motor: %s %d\n", (motor_right.getSpeed() < 0 ? "BACKWARD" : (motor_right.getSpeed() == 0 ? "STOPPED" : "FORWARD")), abs(motor_right.getSpeed()));
+
+    return SHELL_RET_SUCCESS;
+}
+
+int cmd_calibrate(int argc, char **argv)
+{
+    if (argc != 2)
+    {
+        Serial.printf("Usage: c [il|if|ir|ll|lr]\n");
+        return SHELL_RET_FAILURE;
+    }
+
+    //Do something.
+    Serial.printf("Command 'c' is not yet supported.\n");
+
+    return SHELL_RET_SUCCESS;
+}
+
+int cmd_move(int argc, char **argv)
+{
+    if (argc == 1)
+    {
+        Serial.printf("Usage: mv <speed1> <speed2> <duration>\n\n\t- speed1 - Speed of Motor1 (from -255 to 255)\n\t- speed2 - Speed of Motor2 (from -255 to 255)\n\t- duration - duration (in milliseconds) to move for.\n");
+        return SHELL_RET_FAILURE;
+    }
+    Serial.printf("Command 'mv' is not yet supported.\n");
+    //Do something.
+
+    return SHELL_RET_SUCCESS;
+}
+
 void setup()
 {
     Logger::level = LOG_LEVEL;
+
+    Serial.begin(9600);
+    delay(10000);
 
     pinMode(LED_PIN, OUTPUT);
     digitalWriteFast(LED_PIN, HIGH);
 
     handedness = random(0, 2) == 0 ? LEFTHAND : RIGHTHAND; //decides which way the robot will spin when "pinging".
+
+    shell_init(shell_reader, shell_writer, 0);
+    const int c1 = sizeof(commands);
+    if (c1 > 0)
+    {
+        const int c2 = sizeof(commands[0]);
+        const int ccount = c1 / c2;
+
+        for (int i = 0; i < ccount; i++)
+        {
+            Logger::debug("Registering command: %s", commands[i].shell_command_string);
+            if (!shell_register(commands[i].shell_program, commands[i].shell_command_string))
+            {
+                Logger::error("could not register shell command '%s'.", commands[i].shell_command_string);
+            }
+        }
+    }
 
     SetRunState(WAITING); //done with startup, waiting for the button press.
 }
@@ -424,42 +508,4 @@ void loop()
 
     if (loop_handlers[run_state])
         loop_handlers[run_state]();
-}
-
-//=====
-// process shell commands
-
-int cmd_sense(int argc, char **argv)
-{
-    if (argc == 1)
-    {
-        Logger::info("Usage: s");
-        return SHELL_RET_FAILURE;
-    }
-
-    Logger::info("Sensor Values========");
-    Logger::info("Left IR: %s\t(pin %d = %s)", (sensor_left.isTargetAcquired() ? "Acquired" : "None"), LEFT_IR_PIN, (digitalRead(LEFT_IR_PIN) ? "HIGH" : "LOW"));
-    Logger::info("Right IR: %s\t(pin %d = %s)", (sensor_right.isTargetAcquired() ? "Acquired" : "None"), RIGHT_IR_PIN, (digitalRead(RIGHT_IR_PIN) ? "HIGH" : "LOW"));
-    Logger::info("Front IR: %s\t(pin %d = %s)", (sensor_front.isTargetAcquired() ? "Acquired" : "None"), FRONT_IR_PIN, (digitalRead(FRONT_IR_PIN) ? "HIGH" : "LOW"));
-    Logger::info("\n");
-    Logger::info("Left LineSense: %s\t(pin %d = %s)", (line_sensor_left.getDigitalValue() ? "Line" : "No Line"), LEFT_FRONT_LINE_PIN, (digitalRead(LEFT_FRONT_LINE_PIN) ? "HIGH" : "LOW"));
-    Logger::info("Right LineSense: %s\t(pin %d = %s)", (line_sensor_right.getDigitalValue() ? "Line" : "No Line"), RIGHT_FRONT_LINE_PIN, (digitalRead(RIGHT_FRONT_LINE_PIN) ? "HIGH" : "LOW"));
-    Logger::info("\n");
-    Logger::info("Left Motor: %s %d", (motor_left.getSpeed() < 0 ? "BACKWARD" : (motor_left.getSpeed() == 0 ? "STOPPED" : "FORWARD")), abs(motor_left.getSpeed()));
-    Logger::info("Right Motor: %s %d", (motor_right.getSpeed() < 0 ? "BACKWARD" : (motor_right.getSpeed() == 0 ? "STOPPED" : "FORWARD")), abs(motor_right.getSpeed()));
-
-    return SHELL_RET_SUCCESS;
-}
-
-int cmd_calibrate(int argc, char **argv)
-{
-    if (argc == 1)
-    {
-        Logger::info("Usage: c [il|if|ir|ll|lr]");
-        return SHELL_RET_FAILURE;
-    }
-
-    //Do something.
-
-    return SHELL_RET_SUCCESS;
 }

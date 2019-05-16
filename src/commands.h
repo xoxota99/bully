@@ -15,6 +15,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define CONFIG_SHELL_MAX_COMMANDS 10 // we MUST do this before #including Shell.h
 
 #ifndef __BULLY_COMMANDS_H__
 #define __BULLY_COMMANDS_H__

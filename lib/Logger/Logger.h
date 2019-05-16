@@ -47,6 +47,7 @@ class Logger
     static void warn(const char *format, ...);
     static void error(const char *format, ...);
     static void fatal(const char *format, ...);
+    static const char *getLevelName();
 
   private:
     static void _log_va_list(const LogLevel level, const char *format, va_list args);
